@@ -1,0 +1,42 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ARG BASE_IMAGE=apache/gluten:cpp
+
+FROM ${BASE_IMAGE} as centos
+
+ENV SDKMAN_DIR=/usr/local/sdkman \
+  PATH=/root/bin:/root/.local/bin:${SDKMAN_DIR}/bin:${PATH}
+RUN --mount=type=cache,target=/var/cache/dnf,sharing=locked \
+    --mount=type=cache,target=/usr/local/src,sharing=locked \
+    dnf update -y && dnf install -y java-17-openjdk-headless less procps wget diffutils git vim gdb && \
+    dnf -y install epel-release && \
+    dnf -y install \
+        openssh-server openssh-clients \
+        htop atop glances nmon sysstat dstat \
+        perf valgrind time smem \
+        iotop strace lsof smartmontools \
+        iftop nload bmon iproute iproute-tc iputils tcpdump ngrep mtr iperf3 \
+        podman podman-compose podman-docker \
+        gdb ltrace systemtap systemtap-runtime elfutils \
+        bcc bcc-tools bpftool && \
+    mkdir /var/run/sshd && \
+    # Install sdkman
+    curl -s "https://get.sdkman.io" | bash && \
+    source "$SDKMAN_DIR/bin/sdkman-init.sh" && \
+    sdk install maven && \
+    sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's@#AuthorizedKeysFile.*@AuthorizedKeysFile .ssh/authorized_keys@' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+    ssh-keygen -A
+

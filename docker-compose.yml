@@ -1,0 +1,68 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+services:
+  centos-deps:
+    image: docker.io/apache/gluten:deps
+    build:
+      args:
+        - DEPENDENCY_IMAGE=presto/prestissimo-dependency:centos9
+        - ARM_BUILD_TARGET=notlocal
+        - EXTRA_CMAKE_FLAGS=${CENTOS_CMAKE_FLAGS} ${COMMON_CMAKE_FLAGS}
+      context: ..
+      dockerfile: gluten-dev/Dockerfile-deps
+      labels:
+        org.opencontainers.image.revision: ${COMMIT_ID}
+        org.opencontainers.image.created: ${TIMESTAMP}
+        org.opencontainers.image.version: ${VERSION}
+        org.opencontainers.image.description: ${DESCRIPTION}
+        org.opencontainers.image.licenses: Apache-2.0
+
+  centos-cpp:
+    image: docker.io/apache/gluten:cpp
+    build:
+      args:
+        - ARM_BUILD_TARGET=notlocal
+        - EXTRA_CMAKE_FLAGS=${CENTOS_CMAKE_FLAGS} ${COMMON_CMAKE_FLAGS}
+      context: ..
+      dockerfile: gluten-dev/Dockerfile-cpp
+      labels:
+        org.opencontainers.image.revision: ${COMMIT_ID}
+        org.opencontainers.image.created: ${TIMESTAMP}
+        org.opencontainers.image.version: ${VERSION}
+        org.opencontainers.image.description: ${DESCRIPTION}
+        org.opencontainers.image.licenses: Apache-2.0
+
+  centos-dev:
+    image: docker.io/apache/gluten:dev
+    build:
+      dockerfile: Dockerfile-tools
+      target: centos
+      labels:
+        org.opencontainers.image.revision: ${COMMIT_ID}
+        org.opencontainers.image.created: ${TIMESTAMP}
+        org.opencontainers.image.version: ${VERSION}
+        org.opencontainers.image.description: ${DESCRIPTION}
+        org.opencontainers.image.licenses: Apache-2.0
+    stdin_open: true
+    tty: true
+    volumes:
+      - ..:/gluten
+      - ./root:/root
+      - ./.env:/root/.build-env
+    working_dir: /gluten
+    ports:
+    - 8080:8080
+    - 8081:8081
+    - 8090:8090
+    - 7777:7777
+    - 2222:2222
+    command: /usr/sbin/sshd -D

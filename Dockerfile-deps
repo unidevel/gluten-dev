@@ -1,0 +1,82 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ARG DEPENDENCY_IMAGE=presto/prestissimo-dependency:centos9 \
+  BASE_IMAGE=quay.io/centos/centos:stream9 \
+  OSNAME=centos \
+  EXTRA_CMAKE_FLAGS='' \
+  NUM_THREADS=8 \
+  ARM_BUILD_TARGET=''
+
+FROM ${DEPENDENCY_IMAGE}
+
+ENV PROMPT_ALWAYS_RESPOND=n \
+  BUILD_BASE_DIR=_build \
+  LANG=C.UTF-8 \
+  EXTRA_CMAKE_FLAGS=${EXTRA_CMAKE_FLAGS} \
+  JAVA_HOME=/usr/lib/jvm/jre-17-openjdk \
+  GCC_TOOL=/opt/rh/gcc-toolset-12 \
+  BUILD_ROOT=/gluten \
+  VCPKG_PATH=/var/cache/vcpkg \
+  VCPKG_BINARY_SOURCES=clear;files,/var/cache/vcpkg,readwrite \
+  SHARED_LIBS=/shared-libs
+ 
+RUN --mount=type=cache,target=/var/cache/dnf,sharing=locked \
+    --mount=type=cache,target=/usr/local/src,sharing=locked \
+    echo "keepcache=1" >> /etc/dnf/dnf.conf && \
+    dnf update -y && dnf install -y --allowerasing kernel-headers kernel-devel perl \
+      java-17-openjdk-headless maven gcc-toolset-12 make less procps wget sudo \
+      diffutils git vim gdb curl zip unzip tar patch \
+      dnf-plugins-core epel-release
+
+RUN --mount=type=bind,source=.,target=${BUILD_ROOT},rw \
+    --mount=type=cache,target=/root/ccache \
+    --mount=type=cache,target=/root/m2,sharing=locked \
+    --mount=type=cache,target=/gluten/dev/vcpkg/.vcpkg \
+    source ${GCC_TOOL}/enable && \
+    export VCPKG_ROOT=/root/vcpkg && \
+    export MAVEN_USER_HOME=/root/m2 && \
+    export MAVEN_OPTS="$MAVEN_OPTS -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -Dmaven.repo.local=${MAVEN_USER_HOME}/repository" && \
+    if [ "${CACHE_OPTION}" = "update" ]; then \
+      echo "Updating ccache data"; \
+      ccache -sz -v; \
+    else \
+      echo "[safe]" > /root/.gitconfig && \
+      echo "  directory = ${BUILD_ROOT}" >> /root/.gitconfig && \
+      echo "  directory = ${BUILD_ROOT}/presto-native-execution/velox" >> /root/.gitconfig && \
+      cat /root/.gitconfig && \
+      export CCACHE_DIR=/root/ccache && \
+      if [ "${CACHE_OPTION}" = "clean" ]; then \
+        echo "Cleaning ccache folder: /root/ccache" && \
+        rm -rf ${CCACHE_DIR}/* ; \
+        echo "Cleaning m2 folder: ${MAVEN_USER_HOME}" && \
+        rm -rf ${MAVEN_USER_HOME}/* ; \
+      fi \
+    fi && \
+    cd ${BUILD_ROOT} && \
+    rm -rf /usr/local/include/arrow && \
+    rm -rf /usr/local/share/arrow && \
+    rm -rf /usr/local/share/doc/arrow && \
+    rm -rf /usr/local/lib64/libarrow* && \
+    rm -rf /usr/local/lib64/libarrow* && \
+    rm -rf /usr/local/lib64/pkgconfig/arrow* && \
+    rm -rf /usr/local/lib64/cmake/Arrow/arrow-config.cmake && \
+    rm -rf /usr/local/share/gdb/auto-load/usr/local/lib64/libarrow* && \
+    bash dev/build-arrow.sh; \
+    mvn dependency:go-offline -Pbackends-velox -Piceberg -Pdelta -Pspark-3.5 -DskipTests && \
+    mkdir -p /opt/cache && \
+    rm -rf /opt/cache/.ccache /root/.ccache /root/.m2 && \
+    cp -a ${MAVEN_USER_HOME} /opt/cache/.m2 && \
+    ln -sf /opt/cache/.m2 /root/.m2 && \
+    cp -a ${CCACHE_DIR} /opt/cache/.ccache && \
+    ln -sf /opt/cache/.ccache /root/.ccache; \
+    ccache -s -v

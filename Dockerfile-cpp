@@ -1,0 +1,78 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+ARG BASE_IMAGE=apache/gluten:deps
+FROM ${BASE_IMAGE}
+
+ARG OSNAME=centos \
+  EXTRA_CMAKE_FLAGS='' \
+  NUM_THREADS=8 \
+  ARM_BUILD_TARGET='' \
+  CACHE_OPTION='' \
+  SPARK_VERSION=3.5
+
+ENV PROMPT_ALWAYS_RESPOND=n \
+  BUILD_BASE_DIR=_build \
+  LANG=C.UTF-8 \
+  EXTRA_CMAKE_FLAGS=${EXTRA_CMAKE_FLAGS} \
+  JAVA_HOME=/usr/lib/jvm/jre-17-openjdk \
+  GCC_TOOL=/opt/rh/gcc-toolset-12 \
+  BUILD_ROOT=/gluten \
+  VCPKG_PATH=/var/cache/vcpkg \
+  VCPKG_BINARY_SOURCES=clear;files,/var/cache/vcpkg,readwrite \
+  SHARED_LIBS=/shared-libs
+
+RUN --mount=type=bind,source=.,target=${BUILD_ROOT},rw \
+    --mount=type=cache,target=/root/ccache \
+    --mount=type=cache,target=/root/m2,sharing=locked \
+    source ${GCC_TOOL}/enable && \
+    export MAVEN_USER_HOME=/root/m2 && \
+    export MAVEN_OPTS="$MAVEN_OPTS -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -Dmaven.repo.local=${MAVEN_USER_HOME}/repository" && \
+    if [ "${CACHE_OPTION}" = "update" ]; then \
+      echo "Updating ccache data"; \
+      ccache -sz -v; \
+    else \
+      echo "[safe]" > /root/.gitconfig && \
+      echo "  directory = ${BUILD_ROOT}" >> /root/.gitconfig && \
+      cat /root/.gitconfig && \
+      export CCACHE_DIR=/root/ccache && \
+      if [ "${CACHE_OPTION}" = "clean" ]; then \
+        echo "Cleaning ccache folder: /root/ccache" && \
+        rm -rf ${CCACHE_DIR}/* ; \
+        echo "Cleaning m2 folder: ${MAVEN_USER_HOME}" && \
+        rm -rf ${MAVEN_USER_HOME}/* ; \
+      fi \
+    fi && \
+    cd ${BUILD_ROOT} && \
+    ./dev/builddeps-veloxbe.sh --build_type=Debug --run_setup_script=OFF --enable_s3=ON \
+      --enable_gcs=ON --enable_abfs=ON --build_arrow=OFF \
+      --enable_enhanced_features=ON --build_tests=ON && \
+    ./dev/build-thirdparty.sh && \
+    find ${BUILD_ROOT}/package && \
+    mkdir -p /opt/gluten/lib && \
+    cp -a /gluten/package/target/thirdparty-lib/* /opt/gluten/lib/ && \
+    mvn package -Pbackends-velox -Pceleborn -Piceberg -Pdelta -Pspark-${SPARK_VERSION} -DskipTests && \
+    find ${BUILD_ROOT}/package && \
+    cp -a ${BUILD_ROOT}/package/target/gluten-*-bundle-*.jar /opt/gluten/lib/ && \
+    echo "/opt/gluten/lib" >> /etc/ld.so.conf.d/gluten.conf && ldconfig && \
+    if [ "${CACHE_OPTION}" = "update" ]; then \
+      echo "ccache data updated"; \
+    else \
+      mkdir -p /opt/cache/.ccache /opt/cache/.m2 && \
+      cp -a ${MAVEN_USER_HOME}/* /opt/cache/.m2/ && \
+      ln -sf /opt/cache/.m2 /root/.m2 && \
+      du -sh /opt/cache/.m2 && \
+      cp -a ${CCACHE_DIR}/* /opt/cache/.ccache/ && \
+      ln -sf /opt/cache/.ccache /root/.ccache && \
+      du -sh /opt/cache/.ccache; \
+    fi && \
+    ccache -s -v
