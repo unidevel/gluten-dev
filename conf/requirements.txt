@@ -1,0 +1,5 @@
+pyspark==3.5.7
+delta-spark==3.2.1
+jupyterlab
+pandas
+

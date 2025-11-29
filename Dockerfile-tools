@@ -40,3 +40,46 @@ RUN --mount=type=cache,target=/var/cache/dnf,sharing=locked \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && \
     ssh-keygen -A
 
+# Install Spark 3.5.0
+ENV SPARK_VERSION=3.5.7 \
+  HADOOP_VERSION=3 \
+  DELTA_VERSION=3.2.1 \
+  SPARK_HOME=/opt/spark \
+  PATH=$PATH:/opt/spark/bin
+
+# Install Python packages
+COPY ./conf/requirements.txt /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt
+
+RUN wget https://dlcdn.apache.org/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz && \
+    tar -xzf spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz -C /opt/ && \
+    mv /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} /opt/spark && \
+    wget https://repo1.maven.org/maven2/io/delta/delta-storage/${DELTA_VERSION}/delta-storage-${DELTA_VERSION}.jar -P /opt/spark/jars && \
+    rm spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz
+
+# Install JARS required for Delta Lake + S3A (MinIO)
+RUN mkdir -p /opt/spark/jars && \
+    \
+    echo "Downloading Delta Lake JARs..." && \
+    wget -q https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/${DELTA_VERSION}/delta-spark_2.12-${DELTA_VERSION}.jar -P /opt/spark/jars && \
+    wget -q https://repo1.maven.org/maven2/io/delta/delta-storage/${DELTA_VERSION}/delta-storage-${DELTA_VERSION}.jar -P /opt/spark/jars && \
+    \
+    echo "Downloading Hadoop AWS 3.3.4..." && \
+    wget -q https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar -P /opt/spark/jars && \
+    \
+    echo "Downloading AWS SDK bundle 1.12.262..." && \
+    wget -q https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar -P /opt/spark/jars && \
+    \
+    echo "Downloading required Apache Commons packages..." && \
+    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-configuration2/2.9.0/commons-configuration2-2.9.0.jar -P /opt/spark/jars && \
+    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-collections4/4.4/commons-collections4-4.4.jar -P /opt/spark/jars && \
+    \
+    ln -sf /opt/gluten/lib/*.jar /opt/spark/jars/
+
+RUN mkdir -p /root/.local /root/.cache && \
+    mv /root/.local /opt/cache/.local && \
+    ln -sf /opt/cache/.local /root/.local && \
+    du -sh /opt/cache/.local && \
+    mv /root/.cache /opt/cache/.cache && \
+    ln -sf /opt/cache/.cache /root/.cache && \
+    du -sh /opt/cache/.cache 

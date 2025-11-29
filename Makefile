@@ -19,7 +19,7 @@ ARM_BUILD_TARGET ?= apple
 	start stop info shell-centos shell prepare-home pull \
 	centos-update-ccache down down-centos
 
-default: start shell
+default: shell
 
 centos-deps:
 	env VERSION=$(VERSION) COMMIT_ID=$(COMMIT_ID) TIMESTAMP=$(TIMESTAMP) DESCRIPTION=$(DESCRIPTION) \
@@ -54,6 +54,7 @@ prepare-home:
 		chmod 644 root/.ssh/authorized_keys; \
 	fi; \
 	test -e root/.m2 || test -L root/.m2 || ln -sfn /opt/cache/.m2 ./root/.m2; \
+	test -e root/.local || test -L root/.local || ln -sfn /opt/cache/.local ./root/.local; \
 	test -e root/.ccache || test -L root/.ccache || ln -sfn /opt/cache/.ccache ./root/.ccache; \
 	test -e root/.cache || test -L root/.cache || ln -sfn /opt/cache/.cache ./root/.cache;
 
@@ -63,18 +64,25 @@ start-centos: prepare-home
 		make pull-centos; \
 	fi
 	VERSION=$(VERSION) COMMIT_ID=$(COMMIT_ID) TIMESTAMP=$(TIMESTAMP) DESCRIPTION=$(DESCRIPTION) \
-		${DOCKER_CMD} compose -f docker-compose.yml -f docker-compose.rootful.yml up centos-dev -d
+		${DOCKER_CMD} compose -f docker-compose.yml -f docker-compose.rootful.yml -f docker-compose.hives3.yml \
+		up -d centos-dev minio hive-metastore mc
 	${DOCKER_CMD} ps | grep gluten-dev
 
 down-centos:
 	VERSION=$(VERSION) COMMIT_ID=$(COMMIT_ID) TIMESTAMP=$(TIMESTAMP) DESCRIPTION=$(DESCRIPTION) \
-		${DOCKER_CMD} compose down centos-dev
+		${DOCKER_CMD} compose -f docker-compose.yml -f docker-compose.rootful.yml -f docker-compose.hives3.yml \
+		down centos-dev minio hive-metastore mc
 
 stop-centos:
 	VERSION=$(VERSION) COMMIT_ID=$(COMMIT_ID) TIMESTAMP=$(TIMESTAMP) DESCRIPTION=$(DESCRIPTION) \
-		${DOCKER_CMD} compose stop centos-dev
+		${DOCKER_CMD} compose -f docker-compose.yml -f docker-compose.rootful.yml -f docker-compose.hives3.yml \
+		stop centos-dev minio hive-metastore mc
 
-shell-centos: start-centos
+shell-centos:
+	@if [ "$$(${DOCKER_CMD} compose ps 2>/dev/null | grep centos-dev | wc -l)" -eq 0 ]; then \
+		echo "centos-dev service is not running. Starting services..."; \
+		$(MAKE) start-centos; \
+	fi
 	VERSION=$(VERSION) COMMIT_ID=$(COMMIT_ID) TIMESTAMP=$(TIMESTAMP) DESCRIPTION=$(DESCRIPTION) \
 		${DOCKER_CMD} compose exec centos-dev bash -l
 

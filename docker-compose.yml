@@ -58,11 +58,8 @@ services:
       - ..:/gluten
       - ./root:/root
       - ./.env:/root/.build-env
-    working_dir: /gluten
+    working_dir: /root
     ports:
     - 8080:8080
-    - 8081:8081
-    - 8090:8090
-    - 7777:7777
     - 2222:2222
     command: /usr/sbin/sshd -D

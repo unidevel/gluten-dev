@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://hive-metastore:9083</value>
+  </property>
+
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>s3a://warehouse/</value>
+  </property>
+    
+  <property>
+    <name>hive.exec.scratchdir</name>
+    <value>/tmp/hive</value>
+  </property>
+</configuration>
